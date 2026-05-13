@@ -1,0 +1,10 @@
+.git
+__pycache__
+*.pyc
+tests/
+.pytest_cache
+terraform/
+ansible/
+k8s/
+.github/
+*.md
