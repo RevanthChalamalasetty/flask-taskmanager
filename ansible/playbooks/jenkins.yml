@@ -1,0 +1,122 @@
+---
+- name: Configure Jenkins Server
+  hosts: jenkins
+  become: yes
+
+  tasks:
+
+    - name: Update all packages
+      command: yum update -y
+      changed_when: true
+
+    - name: Install system dependencies
+      command: yum install -y git curl wget unzip
+      changed_when: true
+
+    - name: Install Java 17
+      command: yum install -y java-17-amazon-corretto
+      changed_when: true
+
+    - name: Verify Java
+      command: java -version
+      register: java_out
+      changed_when: false
+
+    - name: Print Java version
+      debug:
+        msg: "{{ java_out.stderr }}"
+
+    - name: Add Jenkins repository
+      get_url:
+        url: https://pkg.jenkins.io/redhat-stable/jenkins.repo
+        dest: /etc/yum.repos.d/jenkins.repo
+
+    - name: Import Jenkins GPG key
+      command: rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+      changed_when: true
+
+    - name: Install Jenkins
+      command: yum install -y jenkins
+      changed_when: true
+
+    - name: Start and enable Jenkins
+      systemd:
+        name: jenkins
+        state: started
+        enabled: yes
+
+    - name: Install Docker
+      command: yum install -y docker
+      changed_when: true
+
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ec2-user to docker group
+      command: usermod -aG docker ec2-user
+      changed_when: true
+
+    - name: Add jenkins to docker group
+      command: usermod -aG docker jenkins
+      changed_when: true
+
+    - name: Download kubectl
+      get_url:
+        url: "https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl"
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+
+    - name: Verify kubectl
+      command: kubectl version --client
+      register: kubectl_out
+      changed_when: false
+
+    - name: Print kubectl version
+      debug:
+        msg: "{{ kubectl_out.stdout }}"
+
+    - name: Download AWS CLI v2
+      get_url:
+        url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+        dest: /tmp/awscliv2.zip
+
+    - name: Unzip AWS CLI
+      unarchive:
+        src: /tmp/awscliv2.zip
+        dest: /tmp/
+        remote_src: yes
+
+    - name: Install AWS CLI
+      command: /tmp/aws/install --update
+      changed_when: true
+
+    - name: Verify AWS CLI
+      command: aws --version
+      register: aws_out
+      changed_when: false
+
+    - name: Print AWS CLI version
+      debug:
+        msg: "{{ aws_out.stdout }}"
+
+    - name: Wait for Jenkins to be ready
+      wait_for:
+        port: 8080
+        host: 127.0.0.1
+        delay: 15
+        timeout: 90
+
+    - name: Get Jenkins initial admin password
+      command: cat /var/lib/jenkins/secrets/initialAdminPassword
+      register: jenkins_password
+      changed_when: false
+      retries: 5
+      delay: 10
+      until: jenkins_password.rc == 0
+
+    - name: Print Jenkins initial password
+      debug:
+        msg: "JENKINS PASSWORD >>> {{ jenkins_password.stdout }} <<<"

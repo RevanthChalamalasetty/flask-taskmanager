@@ -13,3 +13,5 @@ venv/
 .vscode/
 .idea/
 .DS_Store
+terraform/jenkins_key
+terraform/jenkins_key.pub
