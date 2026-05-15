@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-taskmanager
+  labels:
+    app: flask-taskmanager
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: flask-taskmanager
+  template:
+    metadata:
+      labels:
+        app: flask-taskmanager
+    spec:
+      containers:
+        - name: flask-taskmanager
+          image: 486336528116.dkr.ecr.us-east-1.amazonaws.com/flask-taskmanager:latest
+          ports:
+            - containerPort: 5000
+          env:
+            - name: FLASK_ENV
+              value: "production"
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "250m"
+            limits:
+              memory: "128Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 5
