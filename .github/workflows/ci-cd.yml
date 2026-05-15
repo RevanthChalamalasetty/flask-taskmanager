@@ -38,6 +38,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: us-east-1
 
     steps:
       - name: Checkout code
@@ -48,41 +52,39 @@ jobs:
           echo "Access key length: ${#AWS_ACCESS_KEY_ID}"
           echo "Secret key length: ${#AWS_SECRET_ACCESS_KEY}"
           echo "First 4 chars of key: ${AWS_ACCESS_KEY_ID:0:4}"
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+      - name: Configure AWS
+        run: |
+          aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+          aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+          aws configure set default.region us-east-1
+          aws sts get-caller-identity
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region us-east-1 | \
+            docker login --username AWS --password-stdin \
+            486336528116.dkr.ecr.us-east-1.amazonaws.com
 
       - name: Build and push Docker image
         run: |
           IMAGE_TAG=${{ github.run_number }}
-          docker build -t $ECR_REPO:$IMAGE_TAG .
-          docker tag $ECR_REPO:$IMAGE_TAG $ECR_REPO:latest
-          docker push $ECR_REPO:$IMAGE_TAG
-          docker push $ECR_REPO:latest
-          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          docker build -t ${{ secrets.ECR_REPO }}:$IMAGE_TAG .
+          docker tag ${{ secrets.ECR_REPO }}:$IMAGE_TAG ${{ secrets.ECR_REPO }}:latest
+          docker push ${{ secrets.ECR_REPO }}:$IMAGE_TAG
+          docker push ${{ secrets.ECR_REPO }}:latest
 
       - name: Update kubeconfig
         run: |
           aws eks update-kubeconfig \
             --region us-east-1 \
-            --name $EKS_CLUSTER
+            --name ${{ secrets.EKS_CLUSTER }}
 
       - name: Deploy to Kubernetes
         run: |
           kubectl apply -f k8s/deployment.yaml
           kubectl set image deployment/flask-taskmanager \
-            flask-taskmanager=$ECR_REPO:${{ github.run_number }}
+            flask-taskmanager=${{ secrets.ECR_REPO }}:${{ github.run_number }}
           kubectl rollout status deployment/flask-taskmanager \
             --timeout=120s
 
